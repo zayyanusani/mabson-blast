@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "Mabson Blast",
+    "slug": "mabson-blast",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#0B3D2E"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0B3D2E"
+      }
+    }
+  }
+}

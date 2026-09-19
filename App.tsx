@@ -171,10 +171,6 @@ export default function App() {
           badges: progress.badges,
         });
         if (!active) return;
-        if (userId && quizQuestions.length) {
-      submitLeaderboardScore(userId, selectedCategory, Math.round((score / quizQuestions.length) * 100)).catch((error) => console.warn('Leaderboard submission rejected', error));
-    }
-
     setProgress((prev) => ({
           ...prev,
           xp: merged.xp,
@@ -270,6 +266,10 @@ export default function App() {
   };
 
   const handleFinish = () => {
+    if (userId && quizQuestions.length) {
+      submitLeaderboardScore(userId, selectedCategory, Math.round((score / quizQuestions.length) * 100)).catch((error) => console.warn('Leaderboard submission rejected', error));
+    }
+
     const nextUnlocked = Math.min(MAX_LEVELS, Math.max(progress.unlocks[selectedCategory], selectedLevel + 1));
 
     setProgress((prev) => ({

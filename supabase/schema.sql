@@ -14,6 +14,9 @@ create table if not exists public.player_progress (
   streak integer not null default 0 check (streak >= 0),
   current_level integer not null default 1 check (current_level >= 1),
   best_score integer not null default 0 check (best_score >= 0),
+  best_scores jsonb not null default '{}'::jsonb,
+  unlocks jsonb not null default '{}'::jsonb,
+  badges jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now()
 );
 

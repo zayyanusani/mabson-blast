@@ -16,3 +16,17 @@ export async function getDailyChallenge(): Promise<DailyChallenge | null> {
   if (error) throw error;
   return data as DailyChallenge | null;
 }
+
+
+export async function getTodayAttempt(userId: string, challengeId: string) {
+  if (!supabase) return false;
+  const { data, error } = await supabase.from('challenge_attempts').select('id').eq('user_id', userId).eq('challenge_id', challengeId).maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
+
+export async function submitDailyAttempt(userId: string, challengeId: string, score: number, totalQuestions: number) {
+  if (!supabase) return;
+  const { error } = await supabase.from('challenge_attempts').insert({ user_id: userId, challenge_id: challengeId, score, total_questions: totalQuestions });
+  if (error) throw error;
+}

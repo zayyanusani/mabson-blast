@@ -15,8 +15,9 @@ import { categories, questions, CategoryId } from './data/questions';
 import { supabase } from './lib/supabase';
 import { signIn, signUp, signOut } from './services/auth';
 import { mergeCloudProgress, syncProgress } from './services/progress';
+import { getDailyChallenge, getTodayAttempt, submitDailyAttempt } from './services/dailyChallenge';
 
-type Screen = 'splash' | 'auth' | 'home' | 'map' | 'levels' | 'quiz' | 'result' | 'leaderboard' | 'profile';
+type Screen = 'splash' | 'auth' | 'home' | 'daily' | 'map' | 'levels' | 'quiz' | 'result' | 'leaderboard' | 'profile';
 type BestScores = Record<CategoryId, number>;
 type LevelUnlocks = Record<CategoryId, number>;
 type Badge = { id: string; label: string; unlockedAt: number };
@@ -313,11 +314,14 @@ export default function App() {
         streak={progress.streak}
         onOpenMap={() => setScreen('map')}
         onOpenLevels={() => setScreen('levels')}
+        onOpenDaily={() => setScreen('daily')}
         onOpenLeaderboard={() => setScreen('leaderboard')}
         onOpenProfile={() => setScreen('profile')}
       />
     );
   }
+
+  if (screen === 'daily') return <DailyChallengeScreen userId={userId} onBack={() => setScreen('home')} onReward={(xp) => setProgress((prev) => ({ ...prev, xp: prev.xp + xp, streak: prev.streak + 1 }))} />;
 
   if (screen === 'map') {
     return (
@@ -493,6 +497,7 @@ function HomeScreen({
   streak: number;
   onOpenMap: () => void;
   onOpenLevels: () => void;
+  onOpenDaily: () => void;
   onOpenLeaderboard: () => void;
   onOpenProfile: () => void;
 }) {
@@ -534,6 +539,11 @@ function HomeScreen({
           </View>
         </View>
 
+        <TouchableOpacity style={styles.dailyCard} onPress={onOpenDaily}>
+          <Text style={styles.dailyTitle}>🔥 Daily Challenge</Text>
+          <Text style={styles.mapSubtext}>Complete today's culture challenge and grow your streak.</Text>
+        </TouchableOpacity>
+
         <View style={styles.titleRow}>
           <Text style={styles.sectionTitle}>Explore</Text>
           <TouchableOpacity onPress={onOpenLeaderboard}>
@@ -553,6 +563,53 @@ function HomeScreen({
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function DailyChallengeScreen({ userId, onBack, onReward }: { userId: string | null; onBack: () => void; onReward: (xp: number) => void }) {
+  const [loading, setLoading] = useState(true);
+  const [completed, setCompleted] = useState(false);
+  const [score, setScore] = useState(0);
+  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [items, setItems] = useState<typeof questions>([]);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const dailyKey = `mabson-blast-daily-${new Date().toISOString().slice(0, 10)}`;
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        if (await AsyncStorage.getItem(dailyKey)) { setCompleted(true); return; }
+        const challenge = await getDailyChallenge();
+        if (challenge) {
+          setChallengeId(challenge.id);
+          const selected = challenge.question_ids.map((id) => questions.find((q) => q.id === id)).filter(Boolean) as typeof questions;
+          setItems(selected.length ? selected : questions.slice(0, 3));
+          if (userId) setCompleted(await getTodayAttempt(userId, challenge.id));
+        } else {
+          const start = Math.abs(new Date().getUTCDate() - 1) % Math.max(1, questions.length - 2);
+          setItems(questions.slice(start, start + 3));
+        }
+      } catch (error) {
+        console.warn('Unable to load daily challenge', error);
+        setItems(questions.slice(0, 3));
+      } finally { setLoading(false); }
+    };
+    load();
+  }, [userId]);
+
+  const finish = async () => {
+    const finalScore = items.reduce((total, q) => total + (answers[q.id] === q.answer ? 1 : 0), 0);
+    const reward = 25 + finalScore * 25;
+    if (userId && challengeId) {
+      try { await submitDailyAttempt(userId, challengeId, finalScore, items.length); } catch (error) { console.warn('Unable to submit daily attempt', error); }
+    }
+    await AsyncStorage.setItem(dailyKey, '1');
+    setCompleted(true);
+    onReward(reward);
+  };
+
+  if (loading) return <SafeAreaView style={styles.safeLight}><View style={styles.resultScreen}><Text style={styles.resultTitle}>Loading daily challenge…</Text></View></SafeAreaView>;
+  if (completed) return <SafeAreaView style={styles.safeLight}><View style={styles.resultScreen}><Text style={styles.resultEmoji}>🔥</Text><Text style={styles.resultTitle}>Daily complete!</Text><Text style={styles.resultScore}>{items.reduce((total, q) => total + (answers[q.id] === q.answer ? 1 : 0), 0)}/{items.length}</Text><Text style={styles.resultMessage}>Come back tomorrow for a new challenge.</Text><TouchableOpacity style={styles.primaryButton} onPress={onBack}><Text style={styles.primaryButtonText}>Back to home</Text></TouchableOpacity></View></SafeAreaView>;
+  return <SafeAreaView style={styles.safeLight}><ScrollView contentContainerStyle={styles.dailyWrap}><Text style={styles.resultTitle}>🔥 Daily Challenge</Text><Text style={styles.dailyDate}>{new Date().toDateString()}</Text>{items.map((q, i) => <View key={q.id} style={styles.dailyQuestion}><Text style={styles.dailyQuestionText}>{i + 1}. {q.question}</Text>{q.options.map((option) => <TouchableOpacity key={option} style={[styles.dailyOption, answers[q.id] === option && styles.selectedDailyOption]} onPress={() => setAnswers((prev) => prev[q.id] ? prev : { ...prev, [q.id]: option })} disabled={Boolean(answers[q.id])}><Text style={styles.optionText}>{option}</Text></TouchableOpacity>)}</View>)}<TouchableOpacity style={styles.primaryButton} onPress={finish}><Text style={styles.primaryButtonText}>Complete challenge</Text></TouchableOpacity><TouchableOpacity style={styles.secondaryButton} onPress={onBack}><Text style={styles.secondaryButtonText}>Back</Text></TouchableOpacity></ScrollView></SafeAreaView>;
 }
 
 function ExploreScreen({
@@ -1257,6 +1314,14 @@ const styles = StyleSheet.create({
   authWrap: { flexGrow: 1, padding: 28, justifyContent: 'center' },
   authTitle: { color: palette.green, fontSize: 24, fontWeight: '900', marginTop: 12, marginBottom: 18 },
   authInput: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#D9E2DC', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14, marginTop: 10, fontSize: 16 },
+  dailyWrap: { padding: 24, paddingBottom: 40 },
+  dailyDate: { color: palette.muted, marginTop: 8, marginBottom: 12 },
+  dailyCard: { marginTop: 18, backgroundColor: '#FFF4D8', borderRadius: 18, padding: 20, borderWidth: 1, borderColor: '#F0D37A' },
+  dailyTitle: { color: palette.ink, fontSize: 20, fontWeight: '900' },
+  dailyQuestion: { marginTop: 16, backgroundColor: '#F5F9F6', borderRadius: 16, padding: 16 },
+  dailyQuestionText: { color: palette.ink, fontSize: 17, lineHeight: 24, fontWeight: '800', marginBottom: 10 },
+  selectedDailyOption: { borderColor: palette.green, borderWidth: 2 },
+  dailyOption: { backgroundColor: '#FFFFFF', borderRadius: 10, padding: 12, marginTop: 8, borderWidth: 1, borderColor: '#E2E8E4' },
   authError: { color: palette.red, marginTop: 12, lineHeight: 20 },
   profileWrap: {
     flex: 1,

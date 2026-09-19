@@ -5,14 +5,14 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "splash": {
-      "backgroundColor": "#0B3D2E"
-    },
+    "scheme": "mabsonblast",
+    "splash": { "backgroundColor": "#0B3D2E" },
     "assetBundlePatterns": ["**/*"],
     "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#0B3D2E"
-      }
-    }
+      "package": "com.zayyanusani.mabsonblast",
+      "adaptiveIcon": { "backgroundColor": "#0B3D2E" }
+    },
+    "ios": { "bundleIdentifier": "com.zayyanusani.mabsonblast" },
+    "extra": { "eas": { "projectId": "REPLACE_WITH_EAS_PROJECT_ID" } }
   }
 }

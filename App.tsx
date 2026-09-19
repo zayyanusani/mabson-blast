@@ -10,8 +10,9 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { categories, questions, CategoryId, Question } from './data/questions';
 
-type Screen = 'splash' | 'home' | 'quiz' | 'result' | 'leaderboard' | 'profile';
+type Screen = 'splash' | 'home' | 'levels' | 'quiz' | 'result' | 'leaderboard' | 'profile';
 type BestScores = Record<CategoryId, number>;
+type LevelUnlocks = Record<CategoryId, number>;
 
 const initialBestScores: BestScores = {
   nigeria: 0,
@@ -19,6 +20,15 @@ const initialBestScores: BestScores = {
   food: 0,
   landmarks: 0,
 };
+
+const initialUnlocks: LevelUnlocks = {
+  nigeria: 1,
+  africa: 1,
+  food: 1,
+  landmarks: 1,
+};
+
+const MAX_LEVELS = 3;
 
 const palette = {
   green: '#0B3D2E',
@@ -34,11 +44,13 @@ const palette = {
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('splash');
-  const [category, setCategory] = useState<CategoryId>('nigeria');
+  const [selectedCategory, setSelectedCategory] = useState<CategoryId>('nigeria');
+  const [selectedLevel, setSelectedLevel] = useState(1);
   const [index, setIndex] = useState(0);
   const [score, setScore] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [bestScores, setBestScores] = useState<BestScores>(initialBestScores);
+  const [unlocks, setUnlocks] = useState<LevelUnlocks>(initialUnlocks);
   const [playerName] = useState('Aisha');
 
   useEffect(() => {
@@ -46,16 +58,18 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  const quizQuestions = useMemo(
-    () => questions.filter((item) => item.category === category),
-    [category]
-  );
+  const levelQuestions = useMemo(() => {
+    const items = questions.filter((item) => item.category === selectedCategory);
+    const start = (selectedLevel - 1) * 3;
+    return items.slice(start, start + 3);
+  }, [selectedCategory, selectedLevel]);
 
-  const currentQuestion = quizQuestions[index];
-  const categoryMeta = categories.find((item) => item.id === category) ?? categories[0];
+  const currentQuestion = levelQuestions[index];
+  const categoryMeta = categories.find((item) => item.id === selectedCategory) ?? categories[0];
 
-  const startGame = (nextCategory: CategoryId = category) => {
-    setCategory(nextCategory);
+  const startLevel = (category: CategoryId, level: number) => {
+    setSelectedCategory(category);
+    setSelectedLevel(level);
     setIndex(0);
     setScore(0);
     setSelectedAnswer(null);
@@ -72,15 +86,27 @@ export default function App() {
     }
   };
 
+  const handleFinish = () => {
+    const nextUnlocked = Math.max(unlocks[selectedCategory], selectedLevel + 1);
+
+    setUnlocks((prev) => ({
+      ...prev,
+      [selectedCategory]: Math.min(MAX_LEVELS, nextUnlocked),
+    }));
+
+    setBestScores((prev) => ({
+      ...prev,
+      [selectedCategory]: Math.max(prev[selectedCategory], score),
+    }));
+
+    setScreen('result');
+  };
+
   const goToNext = () => {
     if (!currentQuestion) return;
 
-    if (index >= quizQuestions.length - 1) {
-      setBestScores((prev) => ({
-        ...prev,
-        [category]: Math.max(prev[category], score),
-      }));
-      setScreen('result');
+    if (index >= levelQuestions.length - 1) {
+      handleFinish();
       return;
     }
 
@@ -96,9 +122,26 @@ export default function App() {
     return (
       <HomeScreen
         playerName={playerName}
-        onSelect={startGame}
+        onOpenLevels={() => setScreen('levels')}
         onOpenLeaderboard={() => setScreen('leaderboard')}
         onOpenProfile={() => setScreen('profile')}
+      />
+    );
+  }
+
+  if (screen === 'levels') {
+    return (
+      <LevelsScreen
+        categoryMeta={categoryMeta}
+        unlocks={unlocks}
+        onSelectCategory={(category) => {
+          setSelectedCategory(category);
+          setScreen('levels');
+        }}
+        onSelectLevel={(category, level) => {
+          if (level <= unlocks[category]) startLevel(category, level);
+        }}
+        onBack={() => setScreen('home')}
       />
     );
   }
@@ -108,7 +151,7 @@ export default function App() {
       <LeaderboardScreen
         bestScores={bestScores}
         onHome={() => setScreen('home')}
-        onPlay={() => startGame(category)}
+        onPlay={() => startLevel(selectedCategory, selectedLevel)}
       />
     );
   }
@@ -118,18 +161,26 @@ export default function App() {
       <ProfileScreen
         playerName={playerName}
         onHome={() => setScreen('home')}
-        onPlay={() => startGame(category)}
+        onPlay={() => startLevel(selectedCategory, selectedLevel)}
       />
     );
   }
 
   if (screen === 'result') {
+    const percentage = levelQuestions.length === 0 ? 0 : Math.round((score / levelQuestions.length) * 100);
+
     return (
       <ResultScreen
         score={score}
-        total={quizQuestions.length}
+        total={levelQuestions.length}
+        percentage={percentage}
+        canContinue={selectedLevel < MAX_LEVELS}
         onHome={() => setScreen('home')}
-        onRetry={() => startGame(category)}
+        onRetry={() => startLevel(selectedCategory, selectedLevel)}
+        onNext={() => {
+          const nextLevel = Math.min(MAX_LEVELS, selectedLevel + 1);
+          if (selectedLevel < MAX_LEVELS) startLevel(selectedCategory, nextLevel);
+        }}
       />
     );
   }
@@ -142,20 +193,20 @@ export default function App() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.quizHeader}>
           <Text style={styles.brand}>MABSON BLAST</Text>
-          <Text style={styles.progressText}>Q {index + 1}/{quizQuestions.length}</Text>
+          <Text style={styles.progressText}>Q {index + 1}/{levelQuestions.length}</Text>
         </View>
 
         <View style={styles.progressBar}>
           <View
             style={[
               styles.progressFill,
-              { width: `${((index + 1) / quizQuestions.length) * 100}%` },
+              { width: `${((index + 1) / levelQuestions.length) * 100}%` },
             ]}
           />
         </View>
 
         <Text style={styles.categoryTag}>
-          {categoryMeta.title.toUpperCase()} • LEVEL {index + 1}
+          {categoryMeta.title.toUpperCase()} • LEVEL {selectedLevel}
         </Text>
         <Text style={styles.scorePill}>Score: {score}</Text>
         <Text style={styles.questionText}>{currentQuestion.question}</Text>
@@ -202,7 +253,7 @@ export default function App() {
         {selectedAnswer && (
           <TouchableOpacity style={styles.primaryButton} onPress={goToNext}>
             <Text style={styles.primaryButtonText}>
-              {index >= quizQuestions.length - 1 ? 'See Results' : 'Next Question'}
+              {index >= levelQuestions.length - 1 ? 'See Results' : 'Next Question'}
             </Text>
           </TouchableOpacity>
         )}
@@ -224,12 +275,12 @@ function SplashScreen() {
 
 function HomeScreen({
   playerName,
-  onSelect,
+  onOpenLevels,
   onOpenLeaderboard,
   onOpenProfile,
 }: {
   playerName: string;
-  onSelect: (category: CategoryId) => void;
+  onOpenLevels: () => void;
   onOpenLeaderboard: () => void;
   onOpenProfile: () => void;
 }) {
@@ -261,30 +312,79 @@ function HomeScreen({
         </View>
 
         <View style={styles.titleRow}>
-          <Text style={styles.sectionTitle}>Choose a challenge</Text>
+          <Text style={styles.sectionTitle}>Explore the map</Text>
           <TouchableOpacity onPress={onOpenLeaderboard}>
             <Text style={styles.linkText}>Leaderboard</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.categoryGrid}>
+        <TouchableOpacity style={styles.mapCard} onPress={onOpenLevels}>
+          <Text style={styles.mapText}>🌍 View Level Map</Text>
+          <Text style={styles.mapSubtext}>Choose your challenge and unlock new levels</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function LevelsScreen({
+  categoryMeta,
+  unlocks,
+  onSelectCategory,
+  onSelectLevel,
+  onBack,
+}: {
+  categoryMeta: { id: CategoryId; title: string; icon: string; color: string };
+  unlocks: LevelUnlocks;
+  onSelectCategory: (category: CategoryId) => void;
+  onSelectLevel: (category: CategoryId, level: number) => void;
+  onBack: () => void;
+}) {
+  return (
+    <SafeAreaView style={styles.safeLight}>
+      <StatusBar style="dark" />
+      <View style={styles.levelsWrap}>
+        <Text style={styles.resultTitle}>Game map</Text>
+
+        <View style={styles.categoryTabs}>
           {categories.map((item) => (
             <TouchableOpacity
               key={item.id}
-              style={[styles.categoryCard, { backgroundColor: item.color }]}
-              onPress={() => onSelect(item.id)}
+              style={[
+                styles.tabButton,
+                selectedStyles(item.id === categoryMeta.id),
+                { backgroundColor: item.color },
+              ]}
+              onPress={() => onSelectCategory(item.id)}
             >
-              <Text style={styles.cardIcon}>{item.icon}</Text>
-              <Text style={styles.cardTitle}>{item.title}</Text>
-              <Text style={styles.cardCaption}>Play quiz →</Text>
+              <Text>{item.icon} {item.title}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <TouchableOpacity style={styles.primaryButton} onPress={() => onSelect('nigeria')}>
-          <Text style={styles.primaryButtonText}>Start Nigeria Challenge</Text>
+        <View style={styles.levelGrid}>
+          {Array.from({ length: MAX_LEVELS }, (_, index) => {
+            const level = index + 1;
+            const locked = level > unlocks[categoryMeta.id];
+
+            return (
+              <TouchableOpacity
+                key={level}
+                style={[styles.levelButton, locked && styles.lockedLevel]}
+                onPress={() => onSelectLevel(categoryMeta.id, level)}
+                disabled={locked}
+              >
+                <Text style={styles.levelNumber}>Level {level}</Text>
+                <Text style={styles.levelStatus}>{locked ? 'Locked' : 'Play'}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TouchableOpacity style={styles.secondaryButton} onPress={onBack}>
+          <Text style={styles.secondaryButtonText}>Back home</Text>
         </TouchableOpacity>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -292,16 +392,20 @@ function HomeScreen({
 function ResultScreen({
   score,
   total,
+  percentage,
+  canContinue,
   onHome,
   onRetry,
+  onNext,
 }: {
   score: number;
   total: number;
+  percentage: number;
+  canContinue: boolean;
   onHome: () => void;
   onRetry: () => void;
+  onNext: () => void;
 }) {
-  const percentage = total === 0 ? 0 : Math.round((score / total) * 100);
-
   return (
     <SafeAreaView style={styles.safeLight}>
       <StatusBar style="dark" />
@@ -314,6 +418,12 @@ function ResultScreen({
             ? 'Excellent work! Your Africa knowledge is growing fast.'
             : 'Great start! Keep playing and discovering more.'}
         </Text>
+
+        {canContinue && (
+          <TouchableOpacity style={styles.primaryButton} onPress={onNext}>
+            <Text style={styles.primaryButtonText}>Next level</Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity style={styles.primaryButton} onPress={onRetry}>
           <Text style={styles.primaryButtonText}>Play again</Text>
@@ -413,6 +523,11 @@ function ProfileScreen({
     </SafeAreaView>
   );
 }
+
+const selectedStyles = (selected: boolean) => ({
+  borderWidth: selected ? 2 : 1,
+  borderColor: selected ? palette.green : '#E4E7E6',
+});
 
 const styles = StyleSheet.create({
   safeDark: { flex: 1, backgroundColor: palette.green },
@@ -519,22 +634,23 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   linkText: { color: palette.green, fontWeight: '700' },
-  categoryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  categoryCard: {
-    width: '48%',
-    minHeight: 150,
+  mapCard: {
+    marginTop: 8,
+    backgroundColor: '#EEF7F0',
     borderRadius: 18,
-    padding: 16,
-    justifyContent: 'space-between',
+    padding: 22,
+    borderWidth: 1,
+    borderColor: '#CFE4D5',
   },
-  cardIcon: { fontSize: 32 },
-  cardTitle: { color: palette.ink, fontWeight: '800', fontSize: 18 },
-  cardCaption: { color: palette.muted, fontSize: 13, marginTop: 6 },
+  mapText: {
+    color: palette.green,
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  mapSubtext: {
+    color: palette.muted,
+    marginTop: 8,
+  },
   primaryButton: {
     marginTop: 22,
     backgroundColor: palette.gold,
@@ -678,6 +794,54 @@ const styles = StyleSheet.create({
     color: palette.green,
     fontWeight: '800',
     fontSize: 15,
+  },
+  levelsWrap: {
+    flex: 1,
+    padding: 28,
+    justifyContent: 'center',
+  },
+  categoryTabs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 18,
+    marginBottom: 18,
+  },
+  tabButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  levelGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  levelButton: {
+    width: '30%',
+    minHeight: 110,
+    backgroundColor: '#F1F8F3',
+    borderRadius: 16,
+    padding: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lockedLevel: {
+    backgroundColor: '#E9ECEA',
+    opacity: 0.6,
+  },
+  levelNumber: {
+    color: palette.green,
+    fontWeight: '800',
+    fontSize: 16,
+  },
+  levelStatus: {
+    color: palette.muted,
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '700',
   },
   leaderboardWrap: {
     flex: 1,

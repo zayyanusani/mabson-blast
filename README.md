@@ -1,37 +1,33 @@
 # Mabson Blast 🌍
 
-Mabson Blast is a mobile quiz game that makes learning African culture fun. The first MVP includes Nigeria, Africa, food and culture, and landmark challenges.
+Mabson Blast is an African culture quiz game built with Expo, React Native, TypeScript and Supabase.
 
-## Run locally
+## Production foundation
+- Persistent Supabase authentication sessions
+- Email/password authentication service
+- Cloud player progress sync with offline local cache
+- Daily challenge data service
+- XP/level calculation utilities with unit tests
+- Supabase Row Level Security for player-owned data
+- GitHub Actions typecheck and test gate
 
-You need Node.js and Expo Go on your phone, or an Android/iOS simulator.
+## Roadmap
+1. Accounts and cloud sync
+2. 100+ levels and daily challenges
+3. Streaks, badges, timed rounds and achievements
+4. Global and category leaderboards with score validation
+5. Hausa/English localization and country content packs
+6. Analytics, crash reporting and safe monetization
+7. Android/iOS production builds and staged releases
 
-```bash
-npm install
-npx expo start
-```
+## Development
+Install dependencies, then run Expo locally. Run the typecheck and Jest suite before opening a pull request.
 
-Then scan the QR code with Expo Go, or press `a` for Android, `i` for iOS, or `w` for web.
+## Environment
+Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY. Never ship a Supabase service-role key in the mobile app.
 
-## Included in this MVP
+## Supabase
+Run supabase/schema.sql in the Supabase SQL editor before enabling cloud features.
 
-- Home screen with four culture categories
-- Nigeria, Africa, food, and landmark questions
-- Level progress indicator
-- Correct and incorrect answer states
-- Educational fact after every answer
-- Score screen and replay flow
-- TypeScript and Expo configuration
-
-## Next planned features
-
-- User accounts and saved progress
-- 100 levels
-- Daily challenge and streaks
-- Sound effects and music
-- Badges and leaderboard
-- More African countries and translated content
-
-## Content note
-
-Question content should be reviewed by cultural educators before production release. Keep facts respectful, accurate, and representative of the diversity within each country and community.
+## Content standard
+Questions should be reviewed for factual accuracy, cultural context and respectful representation before publication.

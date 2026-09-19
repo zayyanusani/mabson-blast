@@ -86,22 +86,30 @@ export default function App() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!supabase) {
+      setScreen('auth');
+      return;
+    }
+
+    let mounted = true;
     const bootstrap = async () => {
-      if (!supabase) {
-        setScreen('auth');
-        return;
-      }
       const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
       setUserEmail(data.session?.user.email ?? null);
       setScreen(data.session ? 'home' : 'auth');
-      const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-        setUserEmail(session?.user.email ?? null);
-        setScreen(session ? 'home' : 'auth');
-      });
-      return () => listener.subscription.unsubscribe();
     };
-    const cleanupPromise = bootstrap();
-    return () => { cleanupPromise.catch(() => undefined); };
+
+    bootstrap();
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      setUserEmail(session?.user.email ?? null);
+      setScreen(session ? 'home' : 'auth');
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {

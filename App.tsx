@@ -14,6 +14,7 @@ import { StatusBar } from 'expo-status-bar';
 import { categories, questions, CategoryId } from './data/questions';
 import { supabase } from './lib/supabase';
 import { signIn, signUp, signOut } from './services/auth';
+import { mergeCloudProgress, syncProgress } from './services/progress';
 
 type Screen = 'splash' | 'auth' | 'home' | 'map' | 'levels' | 'quiz' | 'result' | 'leaderboard' | 'profile';
 type BestScores = Record<CategoryId, number>;
@@ -84,6 +85,8 @@ export default function App() {
   const [playerName] = useState('Aisha');
   const [progress, setProgress] = useState<ProgressState>(initialProgress);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [cloudReady, setCloudReady] = useState(false);
 
   useEffect(() => {
     if (!supabase) {
@@ -96,6 +99,8 @@ export default function App() {
       const { data } = await supabase.auth.getSession();
       if (!mounted) return;
       setUserEmail(data.session?.user.email ?? null);
+      setUserId(data.session?.user.id ?? null);
+      setCloudReady(false);
       setScreen(data.session ? 'home' : 'auth');
     };
 
@@ -103,6 +108,8 @@ export default function App() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;
       setUserEmail(session?.user.email ?? null);
+      setUserId(session?.user.id ?? null);
+      setCloudReady(false);
       setScreen(session ? 'home' : 'auth');
     });
 
@@ -144,6 +151,55 @@ export default function App() {
 
     saveProgress();
   }, [progress]);
+
+  useEffect(() => {
+    if (!userId) {
+      setCloudReady(false);
+      return;
+    }
+    let active = true;
+    const loadCloud = async () => {
+      try {
+        const merged = await mergeCloudProgress(userId, {
+          xp: progress.xp,
+          streak: progress.streak,
+          current_level: Math.min(12, Math.floor(progress.xp / 100) + 1),
+          best_score: Math.max(...Object.values(progress.bestScores)),
+          best_scores: progress.bestScores,
+          unlocks: progress.unlocks,
+          badges: progress.badges,
+        });
+        if (!active) return;
+        setProgress((prev) => ({
+          ...prev,
+          xp: merged.xp,
+          streak: merged.streak,
+          bestScores: { ...prev.bestScores, ...(merged.best_scores ?? {}) },
+          unlocks: { ...prev.unlocks, ...(merged.unlocks ?? {}) },
+          badges: merged.badges ?? prev.badges,
+        }));
+        setCloudReady(true);
+      } catch (error) {
+        console.warn('Unable to load cloud progress', error);
+        if (active) setCloudReady(true);
+      }
+    };
+    loadCloud();
+    return () => { active = false; };
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId || !cloudReady) return;
+    syncProgress(userId, {
+      xp: progress.xp,
+      streak: progress.streak,
+      current_level: Math.min(12, Math.floor(progress.xp / 100) + 1),
+      best_score: Math.max(...Object.values(progress.bestScores)),
+      best_scores: progress.bestScores,
+      unlocks: progress.unlocks,
+      badges: progress.badges,
+    }).catch((error) => console.warn('Unable to sync cloud progress', error));
+  }, [userId, cloudReady, progress]);
 
   const quizQuestions = useMemo(() => {
     const items = questions.filter((item) => item.category === selectedCategory);

@@ -572,10 +572,12 @@ function DailyChallengeScreen({ userId, onBack, onReward }: { userId: string | n
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [items, setItems] = useState<typeof questions>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const dailyKey = `mabson-blast-daily-${new Date().toISOString().slice(0, 10)}`;
 
   useEffect(() => {
     const load = async () => {
       try {
+        if (await AsyncStorage.getItem(dailyKey)) { setCompleted(true); return; }
         const challenge = await getDailyChallenge();
         if (challenge) {
           setChallengeId(challenge.id);
@@ -600,6 +602,7 @@ function DailyChallengeScreen({ userId, onBack, onReward }: { userId: string | n
     if (userId && challengeId) {
       try { await submitDailyAttempt(userId, challengeId, finalScore, items.length); } catch (error) { console.warn('Unable to submit daily attempt', error); }
     }
+    await AsyncStorage.setItem(dailyKey, '1');
     setCompleted(true);
     onReward(reward);
   };

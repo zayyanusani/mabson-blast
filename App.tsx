@@ -571,6 +571,7 @@ function DailyChallengeScreen({ userId, onBack, onReward }: { userId: string | n
   const [score, setScore] = useState(0);
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [items, setItems] = useState<typeof questions>([]);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const load = async () => {
@@ -594,17 +595,18 @@ function DailyChallengeScreen({ userId, onBack, onReward }: { userId: string | n
   }, [userId]);
 
   const finish = async () => {
-    const reward = 25 + score * 25;
+    const finalScore = items.reduce((total, q) => total + (answers[q.id] === q.answer ? 1 : 0), 0);
+    const reward = 25 + finalScore * 25;
     if (userId && challengeId) {
-      try { await submitDailyAttempt(userId, challengeId, score, items.length); } catch (error) { console.warn('Unable to submit daily attempt', error); }
+      try { await submitDailyAttempt(userId, challengeId, finalScore, items.length); } catch (error) { console.warn('Unable to submit daily attempt', error); }
     }
     setCompleted(true);
     onReward(reward);
   };
 
   if (loading) return <SafeAreaView style={styles.safeLight}><View style={styles.resultScreen}><Text style={styles.resultTitle}>Loading daily challenge…</Text></View></SafeAreaView>;
-  if (completed) return <SafeAreaView style={styles.safeLight}><View style={styles.resultScreen}><Text style={styles.resultEmoji}>🔥</Text><Text style={styles.resultTitle}>Daily complete!</Text><Text style={styles.resultScore}>{score}/{items.length}</Text><Text style={styles.resultMessage}>Come back tomorrow for a new challenge.</Text><TouchableOpacity style={styles.primaryButton} onPress={onBack}><Text style={styles.primaryButtonText}>Back to home</Text></TouchableOpacity></View></SafeAreaView>;
-  return <SafeAreaView style={styles.safeLight}><ScrollView contentContainerStyle={styles.dailyWrap}><Text style={styles.resultTitle}>🔥 Daily Challenge</Text><Text style={styles.dailyDate}>{new Date().toDateString()}</Text>{items.map((q, i) => <View key={q.id} style={styles.dailyQuestion}><Text style={styles.dailyQuestionText}>{i + 1}. {q.question}</Text>{q.options.map((option) => <TouchableOpacity key={option} style={styles.dailyOption} onPress={() => setScore((v) => option === q.answer ? v + 1 : v)}><Text style={styles.optionText}>{option}</Text></TouchableOpacity>)}</View>)}<TouchableOpacity style={styles.primaryButton} onPress={finish}><Text style={styles.primaryButtonText}>Complete challenge</Text></TouchableOpacity><TouchableOpacity style={styles.secondaryButton} onPress={onBack}><Text style={styles.secondaryButtonText}>Back</Text></TouchableOpacity></ScrollView></SafeAreaView>;
+  if (completed) return <SafeAreaView style={styles.safeLight}><View style={styles.resultScreen}><Text style={styles.resultEmoji}>🔥</Text><Text style={styles.resultTitle}>Daily complete!</Text><Text style={styles.resultScore}>{items.reduce((total, q) => total + (answers[q.id] === q.answer ? 1 : 0), 0)}/{items.length}</Text><Text style={styles.resultMessage}>Come back tomorrow for a new challenge.</Text><TouchableOpacity style={styles.primaryButton} onPress={onBack}><Text style={styles.primaryButtonText}>Back to home</Text></TouchableOpacity></View></SafeAreaView>;
+  return <SafeAreaView style={styles.safeLight}><ScrollView contentContainerStyle={styles.dailyWrap}><Text style={styles.resultTitle}>🔥 Daily Challenge</Text><Text style={styles.dailyDate}>{new Date().toDateString()}</Text>{items.map((q, i) => <View key={q.id} style={styles.dailyQuestion}><Text style={styles.dailyQuestionText}>{i + 1}. {q.question}</Text>{q.options.map((option) => <TouchableOpacity key={option} style={[styles.dailyOption, answers[q.id] === option && styles.selectedDailyOption]} onPress={() => setAnswers((prev) => prev[q.id] ? prev : { ...prev, [q.id]: option })} disabled={Boolean(answers[q.id])}><Text style={styles.optionText}>{option}</Text></TouchableOpacity>)}</View>)}<TouchableOpacity style={styles.primaryButton} onPress={finish}><Text style={styles.primaryButtonText}>Complete challenge</Text></TouchableOpacity><TouchableOpacity style={styles.secondaryButton} onPress={onBack}><Text style={styles.secondaryButtonText}>Back</Text></TouchableOpacity></ScrollView></SafeAreaView>;
 }
 
 function ExploreScreen({
@@ -1315,6 +1317,7 @@ const styles = StyleSheet.create({
   dailyTitle: { color: palette.ink, fontSize: 20, fontWeight: '900' },
   dailyQuestion: { marginTop: 16, backgroundColor: '#F5F9F6', borderRadius: 16, padding: 16 },
   dailyQuestionText: { color: palette.ink, fontSize: 17, lineHeight: 24, fontWeight: '800', marginBottom: 10 },
+  selectedDailyOption: { borderColor: palette.green, borderWidth: 2 },
   dailyOption: { backgroundColor: '#FFFFFF', borderRadius: 10, padding: 12, marginTop: 8, borderWidth: 1, borderColor: '#E2E8E4' },
   authError: { color: palette.red, marginTop: 12, lineHeight: 20 },
   profileWrap: {

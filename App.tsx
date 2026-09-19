@@ -87,16 +87,21 @@ export default function App() {
 
   useEffect(() => {
     const bootstrap = async () => {
+      if (!supabase) {
+        setScreen('auth');
+        return;
+      }
       const { data } = await supabase.auth.getSession();
       setUserEmail(data.session?.user.email ?? null);
       setScreen(data.session ? 'home' : 'auth');
+      const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+        setUserEmail(session?.user.email ?? null);
+        setScreen(session ? 'home' : 'auth');
+      });
+      return () => listener.subscription.unsubscribe();
     };
-    bootstrap();
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUserEmail(session?.user.email ?? null);
-      setScreen(session ? 'home' : 'auth');
-    });
-    return () => listener.subscription.unsubscribe();
+    const cleanupPromise = bootstrap();
+    return () => { cleanupPromise.catch(() => undefined); };
   }, []);
 
   useEffect(() => {
@@ -420,7 +425,6 @@ function HomeScreen({
   onOpenProfile,
 }: {
   playerName: string;
-  userEmail: string | null;
   xp: number;
   streak: number;
   onOpenMap: () => void;
@@ -682,6 +686,7 @@ function ProfileScreen({
   onPlay,
 }: {
   playerName: string;
+  userEmail: string | null;
   xp: number;
   streak: number;
   badges: Badge[];

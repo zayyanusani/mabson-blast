@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   SafeAreaView,
   ScrollView,
+  TextInput,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -10,9 +11,11 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
-import { categories, questions, CategoryId, Question } from './data/questions';
+import { categories, questions, CategoryId } from './data/questions';
+import { supabase } from './lib/supabase';
+import { signIn, signUp, signOut } from './services/auth';
 
-type Screen = 'splash' | 'home' | 'map' | 'levels' | 'quiz' | 'result' | 'leaderboard' | 'profile';
+type Screen = 'splash' | 'auth' | 'home' | 'map' | 'levels' | 'quiz' | 'result' | 'leaderboard' | 'profile';
 type BestScores = Record<CategoryId, number>;
 type LevelUnlocks = Record<CategoryId, number>;
 type Badge = { id: string; label: string; unlockedAt: number };
@@ -80,10 +83,33 @@ export default function App() {
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [playerName] = useState('Aisha');
   const [progress, setProgress] = useState<ProgressState>(initialProgress);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => setScreen('home'), 1200);
-    return () => clearTimeout(timer);
+    if (!supabase) {
+      setScreen('auth');
+      return;
+    }
+
+    let mounted = true;
+    const bootstrap = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+      setUserEmail(data.session?.user.email ?? null);
+      setScreen(data.session ? 'home' : 'auth');
+    };
+
+    bootstrap();
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      setUserEmail(session?.user.email ?? null);
+      setScreen(session ? 'home' : 'auth');
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -218,10 +244,15 @@ export default function App() {
 
   if (screen === 'splash') return <SplashScreen />;
 
+  if (screen === 'auth') {
+    return <AuthScreen onAuthenticated={(email) => { setUserEmail(email); setScreen('home'); }} />;
+  }
+
   if (screen === 'home') {
     return (
       <HomeScreen
         playerName={playerName}
+        userEmail={userEmail}
         xp={progress.xp}
         streak={progress.streak}
         onOpenMap={() => setScreen('map')}
@@ -655,6 +686,7 @@ function LeaderboardScreen({
 
 function ProfileScreen({
   playerName,
+  userEmail,
   xp,
   streak,
   badges,
@@ -662,6 +694,7 @@ function ProfileScreen({
   onPlay,
 }: {
   playerName: string;
+  userEmail: string | null;
   xp: number;
   streak: number;
   badges: Badge[];
@@ -677,6 +710,7 @@ function ProfileScreen({
         <View style={styles.profileCard}>
           <Text style={styles.avatar}>👤</Text>
           <Text style={styles.playerName}>{playerName}</Text>
+          <Text style={styles.profileStats}>{userEmail ?? 'Guest'} </Text>
           <Text style={styles.profileStats}>XP {xp} • Streak {streak} days</Text>
         </View>
 
@@ -710,7 +744,56 @@ function ProfileScreen({
         <TouchableOpacity style={styles.secondaryButton} onPress={onHome}>
           <Text style={styles.secondaryButtonText}>Back home</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.secondaryButton} onPress={async () => { await signOut(); }}>
+          <Text style={styles.secondaryButtonText}>Sign out</Text>
+        </TouchableOpacity>
       </View>
+    </SafeAreaView>
+  );
+}
+
+function AuthScreen({ onAuthenticated }: { onAuthenticated: (email: string) => void }) {
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setError('');
+    setBusy(true);
+    try {
+      const result = mode === 'signin'
+        ? await signIn(email.trim(), password)
+        : await signUp(email.trim(), password, displayName.trim());
+      if (result.error) throw result.error;
+      if (result.user?.email) onAuthenticated(result.user.email);
+      else if (mode === 'signup') setError('Account created. Check your email to confirm your account, then sign in.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Authentication failed. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.safeLight}>
+      <StatusBar style="dark" />
+      <ScrollView contentContainerStyle={styles.authWrap}>
+        <Text style={styles.logo}>MABSON{`\\n`}BLAST</Text>
+        <Text style={styles.authTitle}>{mode === 'signin' ? 'Welcome back' : 'Create your account'}</Text>
+        {mode === 'signup' && <TextInput placeholder="Display name" value={displayName} onChangeText={setDisplayName} style={styles.authInput} autoCapitalize="words" />}
+        <TextInput placeholder="Email" value={email} onChangeText={setEmail} style={styles.authInput} autoCapitalize="none" keyboardType="email-address" />
+        <TextInput placeholder="Password" value={password} onChangeText={setPassword} style={styles.authInput} secureTextEntry />
+        {!!error && <Text style={styles.authError}>{error}</Text>}
+        <TouchableOpacity style={styles.primaryButton} onPress={submit} disabled={busy}>
+          <Text style={styles.primaryButtonText}>{busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.secondaryButton} onPress={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(''); }}>
+          <Text style={styles.secondaryButtonText}>{mode === 'signin' ? 'Create a new account' : 'I already have an account'}</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -1115,6 +1198,10 @@ const styles = StyleSheet.create({
   leaderRank: { color: palette.green, fontWeight: '900', width: 40 },
   leaderCategory: { flex: 1, fontWeight: '700', color: palette.ink },
   leaderScore: { color: palette.green, fontWeight: '800' },
+  authWrap: { flexGrow: 1, padding: 28, justifyContent: 'center' },
+  authTitle: { color: palette.green, fontSize: 24, fontWeight: '900', marginTop: 12, marginBottom: 18 },
+  authInput: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#D9E2DC', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14, marginTop: 10, fontSize: 16 },
+  authError: { color: palette.red, marginTop: 12, lineHeight: 20 },
   profileWrap: {
     flex: 1,
     padding: 28,

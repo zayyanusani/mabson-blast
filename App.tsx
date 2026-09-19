@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -8,10 +8,9 @@ import {
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { categories, questions, Question, CategoryId } from './data/questions';
+import { categories, questions, CategoryId, Question } from './data/questions';
 
-type Screen = 'home' | 'quiz' | 'result' | 'leaderboard';
-
+type Screen = 'splash' | 'home' | 'quiz' | 'result' | 'leaderboard' | 'profile';
 type BestScores = Record<CategoryId, number>;
 
 const initialBestScores: BestScores = {
@@ -34,82 +33,108 @@ const palette = {
 };
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>('home');
+  const [screen, setScreen] = useState<Screen>('splash');
   const [category, setCategory] = useState<CategoryId>('nigeria');
   const [index, setIndex] = useState(0);
   const [score, setScore] = useState(0);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [bestScores, setBestScores] = useState<BestScores>(initialBestScores);
+  const [playerName] = useState('Aisha');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setScreen('home'), 1200);
+    return () => clearTimeout(timer);
+  }, []);
 
   const quizQuestions = useMemo(
     () => questions.filter((item) => item.category === category),
     [category]
   );
 
-  const current = quizQuestions[index];
+  const currentQuestion = quizQuestions[index];
   const categoryMeta = categories.find((item) => item.id === category) ?? categories[0];
 
-  const resetRound = (nextCategory: CategoryId) => {
+  const startGame = (nextCategory: CategoryId = category) => {
     setCategory(nextCategory);
     setIndex(0);
     setScore(0);
-    setSelected(null);
+    setSelectedAnswer(null);
     setScreen('quiz');
   };
 
   const chooseAnswer = (answer: string) => {
-    if (selected || !current) return;
+    if (selectedAnswer || !currentQuestion) return;
 
-    setSelected(answer);
+    setSelectedAnswer(answer);
 
-    if (answer === current.answer) {
+    if (answer === currentQuestion.answer) {
       setScore((prev) => prev + 1);
     }
   };
 
   const goToNext = () => {
-    if (!current) return;
+    if (!currentQuestion) return;
 
-    if (index === quizQuestions.length - 1) {
-      const finalScore = score;
+    if (index >= quizQuestions.length - 1) {
       setBestScores((prev) => ({
         ...prev,
-        [category]: Math.max(prev[category], finalScore),
+        [category]: Math.max(prev[category], score),
       }));
       setScreen('result');
       return;
     }
 
     setIndex((prev) => prev + 1);
-    setSelected(null);
+    setSelectedAnswer(null);
   };
 
+  if (screen === 'splash') {
+    return <SplashScreen />;
+  }
+
   if (screen === 'home') {
-    return <Home onSelect={resetRound} onOpenLeaderboard={() => setScreen('leaderboard')} />;
+    return (
+      <HomeScreen
+        playerName={playerName}
+        onSelect={startGame}
+        onOpenLeaderboard={() => setScreen('leaderboard')}
+        onOpenProfile={() => setScreen('profile')}
+      />
+    );
   }
 
   if (screen === 'leaderboard') {
     return (
-      <Leaderboard
+      <LeaderboardScreen
         bestScores={bestScores}
         onHome={() => setScreen('home')}
-        onPlay={() => resetRound(category)}
+        onPlay={() => startGame(category)}
+      />
+    );
+  }
+
+  if (screen === 'profile') {
+    return (
+      <ProfileScreen
+        playerName={playerName}
+        onHome={() => setScreen('home')}
+        onPlay={() => startGame(category)}
       />
     );
   }
 
   if (screen === 'result') {
     return (
-      <Result
+      <ResultScreen
         score={score}
         total={quizQuestions.length}
         onHome={() => setScreen('home')}
-        onRetry={() => resetRound(category)}
+        onRetry={() => startGame(category)}
       />
     );
   }
 
-  if (!current) return null;
+  if (!currentQuestion) return null;
 
   return (
     <SafeAreaView style={styles.safeDark}>
@@ -133,12 +158,12 @@ export default function App() {
           {categoryMeta.title.toUpperCase()} • LEVEL {index + 1}
         </Text>
         <Text style={styles.scorePill}>Score: {score}</Text>
-        <Text style={styles.questionText}>{current.question}</Text>
+        <Text style={styles.questionText}>{currentQuestion.question}</Text>
 
         <View style={styles.optionList}>
-          {current.options.map((option) => {
-            const isCorrect = selected !== null && option === current.answer;
-            const isWrong = selected === option && option !== current.answer;
+          {currentQuestion.options.map((option) => {
+            const isCorrect = selectedAnswer !== null && option === currentQuestion.answer;
+            const isWrong = selectedAnswer === option && option !== currentQuestion.answer;
 
             return (
               <TouchableOpacity
@@ -149,7 +174,7 @@ export default function App() {
                   isWrong && styles.wrongOption,
                 ]}
                 onPress={() => chooseAnswer(option)}
-                disabled={selected !== null}
+                disabled={selectedAnswer !== null}
               >
                 <Text
                   style={[
@@ -165,19 +190,19 @@ export default function App() {
           })}
         </View>
 
-        {selected && (
+        {selectedAnswer && (
           <View style={styles.factBox}>
             <Text style={styles.factTitle}>
-              {selected === current.answer ? 'Correct! 🎉' : `Correct answer: ${current.answer}`}
+              {selectedAnswer === currentQuestion.answer ? 'Correct! 🎉' : `Correct answer: ${currentQuestion.answer}`}
             </Text>
-            <Text style={styles.factText}>{current.fact}</Text>
+            <Text style={styles.factText}>{currentQuestion.fact}</Text>
           </View>
         )}
 
-        {selected && (
+        {selectedAnswer && (
           <TouchableOpacity style={styles.primaryButton} onPress={goToNext}>
             <Text style={styles.primaryButtonText}>
-              {index === quizQuestions.length - 1 ? 'See Results' : 'Next Question'}
+              {index >= quizQuestions.length - 1 ? 'See Results' : 'Next Question'}
             </Text>
           </TouchableOpacity>
         )}
@@ -186,28 +211,51 @@ export default function App() {
   );
 }
 
-function Home({
+function SplashScreen() {
+  return (
+    <SafeAreaView style={styles.splashScreen}>
+      <StatusBar style="light" />
+      <Text style={styles.splashLogo}>MABSON</Text>
+      <Text style={styles.splashLogoSmall}>BLAST</Text>
+      <Text style={styles.splashTag}>Culture. Challenge. Pride.</Text>
+    </SafeAreaView>
+  );
+}
+
+function HomeScreen({
+  playerName,
   onSelect,
   onOpenLeaderboard,
+  onOpenProfile,
 }: {
+  playerName: string;
   onSelect: (category: CategoryId) => void;
   onOpenLeaderboard: () => void;
+  onOpenProfile: () => void;
 }) {
   return (
     <SafeAreaView style={styles.safeLight}>
       <StatusBar style="dark" />
       <ScrollView contentContainerStyle={styles.homeContent}>
-        <Text style={styles.eyebrow}>WELCOME TO</Text>
-        <Text style={styles.logo}>MABSON{`
-`}BLAST</Text>
+        <View style={styles.topRow}>
+          <View>
+            <Text style={styles.eyebrow}>HELLO</Text>
+            <Text style={styles.playerName}>{playerName}</Text>
+          </View>
+          <TouchableOpacity style={styles.profileButton} onPress={onOpenProfile}>
+            <Text style={styles.profileButtonText}>Profile</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.logo}>MABSON{`\n`}BLAST</Text>
         <Text style={styles.tagline}>Learn Africa. Play smart. Grow proud.</Text>
 
         <View style={styles.heroCard}>
           <Text style={styles.heroEmoji}>🌍</Text>
           <View style={styles.heroTextWrap}>
-            <Text style={styles.heroTitle}>Your culture adventure starts here</Text>
+            <Text style={styles.heroTitle}>Your cultural journey begins here</Text>
             <Text style={styles.heroText}>
-              Explore African stories, places, food, and people through fun challenges.
+              Discover African countries, traditions, food, and landmarks one level at a time.
             </Text>
           </View>
         </View>
@@ -241,7 +289,7 @@ function Home({
   );
 }
 
-function Result({
+function ResultScreen({
   score,
   total,
   onHome,
@@ -279,7 +327,7 @@ function Result({
   );
 }
 
-function Leaderboard({
+function LeaderboardScreen({
   bestScores,
   onHome,
   onPlay,
@@ -299,7 +347,9 @@ function Leaderboard({
         {ordered.map(([key, value], index) => (
           <View key={key} style={styles.leaderRow}>
             <Text style={styles.leaderRank}>#{index + 1}</Text>
-            <Text style={styles.leaderCategory}>{categories.find((item) => item.id === key)?.title}</Text>
+            <Text style={styles.leaderCategory}>
+              {categories.find((item) => item.id === key)?.title}
+            </Text>
             <Text style={styles.leaderScore}>{value} pts</Text>
           </View>
         ))}
@@ -316,22 +366,187 @@ function Leaderboard({
   );
 }
 
+function ProfileScreen({
+  playerName,
+  onHome,
+  onPlay,
+}: {
+  playerName: string;
+  onHome: () => void;
+  onPlay: () => void;
+}) {
+  return (
+    <SafeAreaView style={styles.safeLight}>
+      <StatusBar style="dark" />
+      <View style={styles.profileWrap}>
+        <Text style={styles.resultTitle}>Player profile</Text>
+
+        <View style={styles.profileCard}>
+          <Text style={styles.avatar}>👤</Text>
+          <Text style={styles.playerName}>{playerName}</Text>
+          <Text style={styles.profileStats}>Level 3 • 12 badges</Text>
+        </View>
+
+        <View style={styles.statsRow}>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>Quizzes</Text>
+            <Text style={styles.statValue}>18</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>Streak</Text>
+            <Text style={styles.statValue}>4 days</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>XP</Text>
+            <Text style={styles.statValue}>1200</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity style={styles.primaryButton} onPress={onPlay}>
+          <Text style={styles.primaryButtonText}>Continue playing</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.secondaryButton} onPress={onHome}>
+          <Text style={styles.secondaryButtonText}>Back home</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
 const styles = StyleSheet.create({
-  safeDark: {
+  safeDark: { flex: 1, backgroundColor: palette.green },
+  safeLight: { flex: 1, backgroundColor: palette.cream },
+  splashScreen: {
     flex: 1,
     backgroundColor: palette.green,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  safeLight: {
-    flex: 1,
-    backgroundColor: palette.cream,
+  splashLogo: {
+    color: '#EAFBF1',
+    fontSize: 42,
+    fontWeight: '900',
+    letterSpacing: 2,
   },
-  content: {
-    padding: 24,
-    paddingBottom: 40,
+  splashLogoSmall: {
+    color: palette.gold,
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: 5,
   },
-  homeContent: {
-    padding: 24,
-    paddingBottom: 40,
+  splashTag: {
+    marginTop: 16,
+    color: '#DDEEE3',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  content: { padding: 24, paddingBottom: 40 },
+  homeContent: { padding: 24, paddingBottom: 40 },
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  eyebrow: {
+    color: palette.green,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    fontSize: 12,
+  },
+  playerName: {
+    color: palette.green,
+    fontWeight: '900',
+    fontSize: 28,
+  },
+  profileButton: {
+    backgroundColor: '#E4F4EA',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  profileButtonText: {
+    color: palette.green,
+    fontWeight: '700',
+  },
+  logo: {
+    color: palette.green,
+    fontWeight: '900',
+    fontSize: 46,
+    lineHeight: 42,
+    letterSpacing: 1,
+    marginTop: 18,
+  },
+  tagline: {
+    color: palette.muted,
+    fontSize: 16,
+    marginTop: 12,
+  },
+  heroCard: {
+    marginTop: 28,
+    backgroundColor: palette.mint,
+    borderRadius: 20,
+    padding: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  heroEmoji: {
+    fontSize: 48,
+  },
+  heroTextWrap: { flex: 1 },
+  heroTitle: {
+    color: palette.green,
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  heroText: {
+    color: palette.muted,
+    lineHeight: 20,
+  },
+  titleRow: {
+    marginTop: 28,
+    marginBottom: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sectionTitle: {
+    color: palette.ink,
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  linkText: { color: palette.green, fontWeight: '700' },
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  categoryCard: {
+    width: '48%',
+    minHeight: 150,
+    borderRadius: 18,
+    padding: 16,
+    justifyContent: 'space-between',
+  },
+  cardIcon: { fontSize: 32 },
+  cardTitle: { color: palette.ink, fontWeight: '800', fontSize: 18 },
+  cardCaption: { color: palette.muted, fontSize: 13, marginTop: 6 },
+  primaryButton: {
+    marginTop: 22,
+    backgroundColor: palette.gold,
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryButtonText: {
+    color: palette.ink,
+    fontSize: 16,
+    fontWeight: '800',
   },
   quizHeader: {
     flexDirection: 'row',
@@ -387,9 +602,7 @@ const styles = StyleSheet.create({
     marginTop: 18,
     marginBottom: 24,
   },
-  optionList: {
-    gap: 12,
-  },
+  optionList: { gap: 12 },
   option: {
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
@@ -401,23 +614,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E8E8E8',
   },
-  correctOption: {
-    backgroundColor: '#D9F5E1',
-    borderColor: '#4CB77A',
-  },
-  wrongOption: {
-    backgroundColor: '#F8D8D8',
-    borderColor: '#E36767',
-  },
+  correctOption: { backgroundColor: '#D9F5E1', borderColor: '#4CB77A' },
+  wrongOption: { backgroundColor: '#F8D8D8', borderColor: '#E36767' },
   optionText: {
     color: palette.ink,
     fontSize: 16,
     fontWeight: '600',
     flex: 1,
   },
-  optionTextActive: {
-    fontWeight: '800',
-  },
+  optionTextActive: { fontWeight: '800' },
   optionMark: {
     fontSize: 22,
     fontWeight: '800',
@@ -441,116 +646,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
-  primaryButton: {
-    marginTop: 22,
-    backgroundColor: palette.gold,
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryButtonText: {
-    color: palette.ink,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  eyebrow: {
-    color: palette.green,
-    fontWeight: '800',
-    letterSpacing: 2,
-    fontSize: 13,
-    marginTop: 16,
-  },
-  logo: {
-    color: palette.green,
-    fontWeight: '900',
-    fontSize: 46,
-    lineHeight: 42,
-    letterSpacing: 1,
-    marginTop: 8,
-  },
-  tagline: {
-    color: palette.muted,
-    fontSize: 16,
-    marginTop: 12,
-  },
-  heroCard: {
-    marginTop: 28,
-    backgroundColor: palette.mint,
-    borderRadius: 20,
-    padding: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  heroEmoji: {
-    fontSize: 48,
-  },
-  heroTextWrap: {
-    flex: 1,
-  },
-  heroTitle: {
-    color: palette.green,
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 6,
-  },
-  heroText: {
-    color: palette.muted,
-    lineHeight: 20,
-  },
-  titleRow: {
-    marginTop: 28,
-    marginBottom: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sectionTitle: {
-    color: palette.ink,
-    fontSize: 22,
-    fontWeight: '800',
-  },
-  linkText: {
-    color: palette.green,
-    fontWeight: '700',
-  },
-  categoryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  categoryCard: {
-    width: '48%',
-    minHeight: 150,
-    borderRadius: 18,
-    padding: 16,
-    justifyContent: 'space-between',
-  },
-  cardIcon: {
-    fontSize: 32,
-  },
-  cardTitle: {
-    color: palette.ink,
-    fontWeight: '800',
-    fontSize: 18,
-  },
-  cardCaption: {
-    color: palette.muted,
-    fontSize: 13,
-    marginTop: 6,
-  },
   resultScreen: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 30,
   },
-  resultEmoji: {
-    fontSize: 72,
-    marginBottom: 20,
-  },
+  resultEmoji: { fontSize: 72, marginBottom: 20 },
   resultTitle: {
     color: palette.green,
     fontSize: 28,
@@ -591,18 +693,40 @@ const styles = StyleSheet.create({
     padding: 16,
     marginTop: 12,
   },
-  leaderRank: {
-    color: palette.green,
-    fontWeight: '900',
-    width: 40,
-  },
-  leaderCategory: {
+  leaderRank: { color: palette.green, fontWeight: '900', width: 40 },
+  leaderCategory: { flex: 1, fontWeight: '700', color: palette.ink },
+  leaderScore: { color: palette.green, fontWeight: '800' },
+  profileWrap: {
     flex: 1,
-    fontWeight: '700',
-    color: palette.ink,
+    padding: 28,
+    justifyContent: 'center',
   },
-  leaderScore: {
-    color: palette.green,
-    fontWeight: '800',
+  profileCard: {
+    marginTop: 16,
+    backgroundColor: '#F1F8F3',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
   },
+  avatar: { fontSize: 54, marginBottom: 10 },
+  profileStats: {
+    color: palette.muted,
+    fontSize: 14,
+    marginTop: 6,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 18,
+    gap: 10,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: '#F5F7F5',
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+  },
+  statLabel: { color: palette.muted, fontSize: 12 },
+  statValue: { color: palette.green, fontSize: 22, fontWeight: '900', marginTop: 6 },
 });

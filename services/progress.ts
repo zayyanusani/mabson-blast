@@ -43,8 +43,8 @@ export async function mergeCloudProgress(userId: string, local: Omit<CloudProgre
     streak: Math.max(local.streak, cloud.streak),
     current_level: Math.max(local.current_level, cloud.current_level),
     best_score: Math.max(local.best_score, cloud.best_score),
-    best_scores: { ...(local.best_scores ?? {}), ...(cloud.best_scores ?? {}) },
-    unlocks: { ...(local.unlocks ?? {}), ...(cloud.unlocks ?? {}) },
+    best_scores: Object.fromEntries([...new Set([...Object.keys(local.best_scores ?? {}), ...Object.keys(cloud.best_scores ?? {})])].map((key) => [key, Math.max(local.best_scores?.[key] ?? 0, cloud.best_scores?.[key] ?? 0)])),
+    unlocks: Object.fromEntries([...new Set([...Object.keys(local.unlocks ?? {}), ...Object.keys(cloud.unlocks ?? {})])].map((key) => [key, Math.max(local.unlocks?.[key] ?? 1, cloud.unlocks?.[key] ?? 1)])),
     badges: [...(local.badges ?? []), ...(cloud.badges ?? [])].filter((badge, i, arr) => arr.findIndex((b) => b.id === badge.id) === i),
   };
   await syncProgress(userId, merged);

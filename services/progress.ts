@@ -57,3 +57,21 @@ export async function loadCloudProgress(userId: string) {
   if (error) throw error;
   return data as CloudProgress | null;
 }
+
+
+export async function submitLeaderboardScore(userId: string, category: string, score: number) {
+  if (!supabase) return null;
+  if (!userId || score < 0 || score > 100) throw new Error('Invalid leaderboard score');
+  const { data, error } = await supabase.rpc('submit_leaderboard_score', { p_category: category, p_score: score });
+  if (error) throw error;
+  return data;
+}
+
+export async function getLeaderboard(category?: string, limit = 20) {
+  if (!supabase) return [];
+  let query = supabase.from('leaderboard').select('user_id,player_name,score,category,created_at').order('score', { ascending: false }).limit(limit);
+  if (category) query = query.eq('category', category);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data ?? [];
+}

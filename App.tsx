@@ -14,7 +14,7 @@ import { StatusBar } from 'expo-status-bar';
 import { categories, questions, CategoryId } from './data/questions';
 import { supabase } from './lib/supabase';
 import { signIn, signUp, signOut } from './services/auth';
-import { mergeCloudProgress, syncProgress } from './services/progress';
+import { getLeaderboard, mergeCloudProgress, submitLeaderboardScore, syncProgress } from './services/progress';
 import { getDailyChallenge, getTodayAttempt, submitDailyAttempt } from './services/dailyChallenge';
 
 type Screen = 'splash' | 'auth' | 'home' | 'daily' | 'map' | 'levels' | 'quiz' | 'result' | 'leaderboard' | 'profile';
@@ -171,7 +171,7 @@ export default function App() {
           badges: progress.badges,
         });
         if (!active) return;
-        setProgress((prev) => ({
+    setProgress((prev) => ({
           ...prev,
           xp: merged.xp,
           streak: merged.streak,
@@ -266,6 +266,10 @@ export default function App() {
   };
 
   const handleFinish = () => {
+    if (userId && quizQuestions.length) {
+      submitLeaderboardScore(userId, selectedCategory, Math.round((score / quizQuestions.length) * 100)).catch((error) => console.warn('Leaderboard submission rejected', error));
+    }
+
     const nextUnlocked = Math.min(MAX_LEVELS, Math.max(progress.unlocks[selectedCategory], selectedLevel + 1));
 
     setProgress((prev) => ({
@@ -758,43 +762,32 @@ function ResultScreen({
   );
 }
 
-function LeaderboardScreen({
-  bestScores,
-  onHome,
-  onPlay,
-}: {
-  bestScores: BestScores;
-  onHome: () => void;
-  onPlay: () => void;
-}) {
-  const ordered = Object.entries(bestScores).sort((a, b) => b[1] - a[1]);
+function LeaderboardScreen({ bestScores, onHome, onPlay }: { bestScores: BestScores; onHome: () => void; onPlay: () => void }) {
+  const [rows, setRows] = useState<Array<{ user_id: string | null; player_name: string; score: number; category: string }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [category, setCategory] = useState<CategoryId | undefined>(undefined);
 
-  return (
-    <SafeAreaView style={styles.safeLight}>
-      <StatusBar style="dark" />
-      <View style={styles.leaderboardWrap}>
-        <Text style={styles.resultTitle}>Leaderboard</Text>
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    getLeaderboard(category, 20).then((data) => { if (active) setRows(data as typeof rows); }).catch((error) => console.warn('Unable to load leaderboard', error)).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [category]);
 
-        {ordered.map(([key, value], index) => (
-          <View key={key} style={styles.leaderRow}>
-            <Text style={styles.leaderRank}>#{index + 1}</Text>
-            <Text style={styles.leaderCategory}>
-              {categories.find((item) => item.id === key)?.title}
-            </Text>
-            <Text style={styles.leaderScore}>{value} pts</Text>
-          </View>
-        ))}
+  const localRows = Object.entries(bestScores).map(([key, value]) => ({ player_name: 'You', score: value * 100 / 3, category: key }));
+  const displayRows = rows.length ? rows : localRows;
 
-        <TouchableOpacity style={styles.primaryButton} onPress={onPlay}>
-          <Text style={styles.primaryButtonText}>Keep playing</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.secondaryButton} onPress={onHome}>
-          <Text style={styles.secondaryButtonText}>Home</Text>
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
-  );
+  return <SafeAreaView style={styles.safeLight}><StatusBar style="dark" /><ScrollView contentContainerStyle={styles.leaderboardWrap}>
+    <Text style={styles.resultTitle}>Global Leaderboard</Text>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabs}>
+      <TouchableOpacity style={[styles.tabButton, selectedStyles(!category)]} onPress={() => setCategory(undefined)}><Text>All</Text></TouchableOpacity>
+      {categories.map((item) => <TouchableOpacity key={item.id} style={[styles.tabButton, selectedStyles(category === item.id)]} onPress={() => setCategory(item.id)}><Text>{item.title}</Text></TouchableOpacity>)}
+    </ScrollView>
+    {loading ? <Text style={styles.mapSubtext}>Loading rankings…</Text> : displayRows.map((row, index) => <View key={row.user_id ? row.user_id + row.category + index : row.category + index} style={styles.leaderRow}><Text style={styles.leaderRank}>#{index + 1}</Text><Text style={styles.leaderCategory}>{row.player_name} • {categories.find((item) => item.id === row.category)?.title ?? row.category}</Text><Text style={styles.leaderScore}>{Math.round(row.score)}%</Text></View>)}
+    {!displayRows.length && <Text style={styles.mapSubtext}>No scores yet. Be the first to play!</Text>}
+    <TouchableOpacity style={styles.primaryButton} onPress={onPlay}><Text style={styles.primaryButtonText}>Keep playing</Text></TouchableOpacity>
+    <TouchableOpacity style={styles.secondaryButton} onPress={onHome}><Text style={styles.secondaryButtonText}>Home</Text></TouchableOpacity>
+  </ScrollView></SafeAreaView>;
 }
 
 function ProfileScreen({

@@ -101,3 +101,34 @@ $$;
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users
 for each row execute procedure public.handle_new_user();
+
+
+-- Secure leaderboard submission: clients cannot write leaderboard rows directly.
+drop policy if exists "Authenticated users can submit scores" on public.leaderboard;
+
+create or replace function public.submit_leaderboard_score(p_category text, p_score integer)
+returns public.leaderboard
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_name text;
+  v_row public.leaderboard;
+begin
+  if v_user is null then raise exception 'Authentication required'; end if;
+  if p_category not in ('nigeria','africa','food','landmarks') then raise exception 'Invalid category'; end if;
+  if p_score < 0 or p_score > 100 then raise exception 'Invalid score'; end if;
+
+  select display_name into v_name from public.profiles where id = v_user;
+  if v_name is null then raise exception 'Profile not found'; end if;
+
+  insert into public.leaderboard(user_id, player_name, score, category)
+  values (v_user, v_name, p_score, p_category)
+  returning * into v_row;
+  return v_row;
+end;
+$$;
+
+grant execute on function public.submit_leaderboard_score(text, integer) to authenticated;

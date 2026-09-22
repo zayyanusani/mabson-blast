@@ -11,6 +11,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { categories, questions, CategoryId, Question } from './data/questions';
+import { getLeaderboard } from './services/leaderboard';
 
 type Screen = 'splash' | 'home' | 'map' | 'levels' | 'quiz' | 'result' | 'leaderboard' | 'profile';
 type BestScores = Record<CategoryId, number>;
@@ -80,6 +81,7 @@ export default function App() {
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [playerName] = useState('Aisha');
   const [progress, setProgress] = useState<ProgressState>(initialProgress);
+  const [leaderboard, setLeaderboard] = useState<Array<{ player_name: string; score: number; category: string }>>([]);
 
   useEffect(() => {
     const timer = setTimeout(() => setScreen('home'), 1200);
@@ -118,6 +120,27 @@ export default function App() {
 
     saveProgress();
   }, [progress]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadLeaderboard = async () => {
+      try {
+        const scores = await getLeaderboard();
+        if (isMounted) {
+          setLeaderboard(scores.slice(0, 5));
+        }
+      } catch (error) {
+        console.warn('Unable to load leaderboard', error);
+      }
+    };
+
+    loadLeaderboard();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const quizQuestions = useMemo(() => {
     const items = questions.filter((item) => item.category === selectedCategory);
@@ -224,6 +247,7 @@ export default function App() {
         playerName={playerName}
         xp={progress.xp}
         streak={progress.streak}
+        leaderboard={leaderboard}
         onOpenMap={() => setScreen('map')}
         onOpenLevels={() => setScreen('levels')}
         onOpenLeaderboard={() => setScreen('leaderboard')}
@@ -396,6 +420,7 @@ function HomeScreen({
   playerName,
   xp,
   streak,
+  leaderboard,
   onOpenMap,
   onOpenLevels,
   onOpenLeaderboard,
@@ -404,6 +429,7 @@ function HomeScreen({
   playerName: string;
   xp: number;
   streak: number;
+  leaderboard: Array<{ player_name: string; score: number; category: string }>;
   onOpenMap: () => void;
   onOpenLevels: () => void;
   onOpenLeaderboard: () => void;
@@ -463,6 +489,18 @@ function HomeScreen({
           <Text style={styles.mapText}>🎮 View Level Map</Text>
           <Text style={styles.mapSubtext}>Unlock more challenges and new rounds</Text>
         </TouchableOpacity>
+
+        {leaderboard.length > 0 && (
+          <View style={styles.leaderboardPreview}>
+            <Text style={styles.sectionTitle}>Top players</Text>
+            {leaderboard.slice(0, 3).map((entry, index) => (
+              <View key={`${entry.player_name}-${index}`} style={styles.leaderboardRowPreview}>
+                <Text style={styles.leaderboardText}>#{index + 1} {entry.player_name}</Text>
+                <Text style={styles.leaderboardScore}>{entry.score} pts</Text>
+              </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -872,6 +910,30 @@ const styles = StyleSheet.create({
   mapSubtext: {
     color: palette.muted,
     marginTop: 8,
+  },
+  leaderboardPreview: {
+    marginTop: 22,
+    backgroundColor: '#F5F8F5',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E9E2',
+    padding: 16,
+  },
+  leaderboardRowPreview: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5EAE5',
+  },
+  leaderboardText: {
+    color: palette.ink,
+    fontWeight: '700',
+  },
+  leaderboardScore: {
+    color: palette.green,
+    fontWeight: '800',
   },
   primaryButton: {
     marginTop: 22,

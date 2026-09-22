@@ -1,15 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../lib/supabase';
 
 export type LeaderboardEntry = {
   id?: string;
+  user_id?: string;
   player_name: string;
   score: number;
   category: string;
   created_at?: string;
 };
 
-const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const key = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 const cacheKey = 'mabson-blast-leaderboard-cache';
 
 export async function submitScore(entry: LeaderboardEntry) {
@@ -17,34 +17,39 @@ export async function submitScore(entry: LeaderboardEntry) {
   const next = [entry, ...cached].sort((a, b) => b.score - a.score).slice(0, 50);
   await AsyncStorage.setItem(cacheKey, JSON.stringify(next));
 
-  if (!url || !key) return next;
-  const response = await fetch(`${url}/rest/v1/leaderboard`, {
-    method: 'POST',
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=minimal',
-    },
-    body: JSON.stringify(entry),
+  if (!supabase) return next;
+
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) return next;
+
+  const { error } = await supabase.from('leaderboard').insert({
+    ...entry,
+    user_id: userData.user.id,
   });
-  if (!response.ok) throw new Error(`Leaderboard request failed: ${response.status}`);
+  if (error) throw error;
+
   return next;
 }
 
 export async function getLeaderboard(category?: string): Promise<LeaderboardEntry[]> {
-  if (!url || !key) return getCachedScores(category);
-  const filter = category ? `&category=eq.${encodeURIComponent(category)}` : '';
-  const response = await fetch(`${url}/rest/v1/leaderboard?select=*&order=score.desc&limit=50${filter}`, {
-    headers: { apikey: key, Authorization: `Bearer ${key}` },
-  });
-  if (!response.ok) return getCachedScores(category);
-  const result = (await response.json()) as LeaderboardEntry[];
-  await AsyncStorage.setItem(cacheKey, JSON.stringify(result));
-  return result;
+  if (!supabase) return getCachedScores(category);
+
+  let query = supabase
+    .from('leaderboard')
+    .select('id, user_id, player_name, score, category, created_at')
+    .order('score', { ascending: false })
+    .limit(50);
+
+  if (category) query = query.eq('category', category);
+
+  const { data, error } = await query;
+  if (error || !data) return getCachedScores(category);
+
+  await AsyncStorage.setItem(cacheKey, JSON.stringify(data));
+  return data;
 }
 
-async function getCachedScores(category?: string) {
+async function getCachedScores(category?: string): Promise<LeaderboardEntry[]> {
   const raw = await AsyncStorage.getItem(cacheKey);
   const scores = raw ? (JSON.parse(raw) as LeaderboardEntry[]) : [];
   return category ? scores.filter((item) => item.category === category) : scores;
